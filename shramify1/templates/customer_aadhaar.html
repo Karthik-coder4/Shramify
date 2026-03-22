@@ -1,0 +1,136 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>🔐 Customer Aadhaar Verification</h2>
+
+<div class="card" style="margin-bottom: 20px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3);">
+  <h3>🛡️ Why Verify Your Aadhaar?</h3>
+  <p>Aadhaar verification helps ensure trust and security for both customers and workers on our platform. It helps:</p>
+  <ul style="margin: 8px 0; padding-left: 20px;">
+    <li>✅ Build trust with service providers</li>
+    <li>✅ Ensure secure transactions</li>
+    <li>✅ Prevent fraud and fake accounts</li>
+    <li>✅ Create a safer community for everyone</li>
+  </ul>
+</div>
+
+<!-- Verification Status Card -->
+<div class="card" style="margin-bottom: 20px;">
+  <h3>📋 Verification Status</h3>
+  <div class="row">
+    <div class="col">
+      <div style="margin-bottom: 8px;">
+        <strong>Overall Status:</strong> 
+        {% if user.verified and user.mobile_verified %}
+          <span style="color: #10b981;">✅ Verified - You can request services!</span>
+        {% elif user.mobile_verified %}
+          <span style="color: #f59e0b;">⚠️ Partially Verified (Mobile matches)</span>
+        {% else %}
+          <span style="color: #ef4444;">❌ Not Verified - Verification required to request services</span>
+        {% endif %}
+      </div>
+      <div style="margin-bottom: 8px;"><strong>Aadhaar Number:</strong> {{ user.aadhaar_number or user.id_number or '—' }}</div>
+      {% if user.phone %}
+        <div style="margin-bottom: 8px;"><strong>Profile Mobile:</strong> {{ user.phone }} {% if user.mobile_verified %}<span style="color: #10b981;">✓</span>{% elif user.mobile_verified == False %}<span style="color: #ef4444;">✗</span>{% endif %}</div>
+      {% endif %}
+      {% if user.aadhaar_mobile %}
+        <div style="margin-bottom: 8px;"><strong>Aadhaar Mobile:</strong> {{ user.aadhaar_mobile }}</div>
+      {% endif %}
+      {% if user.aadhaar_dob %}
+        <div style="margin-bottom: 8px;"><strong>Aadhaar DOB:</strong> {{ user.aadhaar_dob.strftime('%d/%m/%Y') }}</div>
+      {% endif %}
+      {% if user.verification_error %}
+        <div style="margin-bottom: 8px; color: #ef4444;"><strong>Error:</strong> {{ user.verification_error }}</div>
+      {% endif %}
+    </div>
+    <div class="col">
+      {% if user.aadhaar_image %}
+        <div><strong>Uploaded Image</strong></div>
+        <img src="{{ url_for('static', filename=user.aadhaar_image) }}" alt="Aadhaar Image" style="max-width: 200px; width: 100%; height: auto; border: 1px solid #ddd; border-radius: 8px; margin-top: 8px;"/>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Verification Methods -->
+<div class="card">
+  <div class="row">
+    <div class="col">
+      <h3>🔍 Option 1: Upload Image (Auto-Verify)</h3>
+      <form method="post" enctype="multipart/form-data" class="form">
+        <label>Upload Aadhaar Image
+          <input type="file" name="aadhaar_image" accept="image/*" required>
+        </label>
+        <button type="submit" name="action" value="upload">Upload & Auto-Verify</button>
+      </form>
+      <p class="muted">📱 Use a clear, well-lit image showing both the 12-digit number and mobile number clearly.</p>
+      
+      {% if user.aadhaar_ocr_text %}
+        <details style="margin-top: 16px;">
+          <summary style="cursor: pointer; color: var(--accent);">View OCR Text Extract</summary>
+          <pre style="white-space: pre-wrap; overflow-wrap: anywhere; max-height: 150px; overflow: auto; background: var(--card); padding: 12px; border-radius: 8px; margin-top: 8px; font-size: 0.9rem;">{{ user.aadhaar_ocr_text[:800] }}{% if user.aadhaar_ocr_text|length > 800 %}...{% endif %}</pre>
+        </details>
+      {% endif %}
+    </div>
+    
+    <div class="col">
+      <h3>✏️ Option 2: Enter Manually</h3>
+      <form method="post" class="form">
+        <label>Aadhaar Number (12 digits)
+          <input type="text" name="manual_aadhaar" placeholder="1234 5678 9012" pattern="\d{12}|\d{4}\s\d{4}\s\d{4}" maxlength="14" required>
+        </label>
+        <label>Date of Birth (from Aadhaar card)
+          <input type="date" name="manual_dob" required>
+          <small class="muted" style="display: block; margin-top: 4px;">⚠️ Enter the exact date of birth as printed on your Aadhaar card</small>
+        </label>
+        <label>Mobile Number (from Aadhaar card)
+          <input type="tel" name="manual_mobile" placeholder="9876543210" pattern="^[6-9]\d{9}$" maxlength="10" required oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+          <small class="muted" style="display: block; margin-top: 4px;">⚠️ Enter the exact mobile number as registered with your Aadhaar card</small>
+        </label>
+        <button type="submit" name="action" value="manual">Verify Manually</button>
+      </form>
+      <p class="muted">📝 Enter your details manually if auto-verification failed or for better accuracy.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Help Section -->
+<div class="card" style="margin-top: 20px; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3);">
+  <h3>💡 Verification Help</h3>
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
+    <div>
+      <h4>✅ For Successful Verification:</h4>
+      <ul style="margin: 8px 0; padding-left: 20px;">
+        <li>Aadhaar number must be valid (12 digits)</li>
+        <li>Mobile number must match your registered number</li>
+        <li>Image should be clear and well-lit</li>
+        <li>All details must be clearly visible</li>
+      </ul>
+    </div>
+    <div>
+      <h4>📷 Image Upload Tips:</h4>
+      <ul style="margin: 8px 0; padding-left: 20px;">
+        <li>Use good lighting</li>
+        <li>Ensure text is clearly visible</li>
+        <li>Avoid shadows or glare</li>
+        <li>Include number and mobile in frame</li>
+      </ul>
+    </div>
+    <div>
+      <h4>🔧 Troubleshooting:</h4>
+      <ul style="margin: 8px 0; padding-left: 20px;">
+        <li>If mobile doesn't match, contact support</li>
+        <li>Try manual entry for better accuracy</li>
+        <li>Ensure your Aadhaar is linked to your mobile</li>
+        <li>Contact support if issues persist</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top: 20px;">
+  <a class="btn ghost" href="{{ url_for('profile') }}">← Back to Profile</a>
+  {% if user.verified %}
+    <a class="btn" href="{{ url_for('search') }}">Browse Workers</a>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,169 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Nearby Workers</h2>
+<p class="muted">Find skilled workers near your location using OpenStreetMap (Free alternative to Google Maps)</p>
+
+<div class="card">
+  <label>Your Location:</label>
+  <input type="text" id="location-input" placeholder="Enter your location (e.g., Mumbai, India)" value="{{ user.location or '' }}" />
+  <button class="btn" onclick="findNearbyWorkers()">Find Workers</button>
+</div>
+
+<div id="map" style="height: 500px; width: 100%; margin: 20px 0; border-radius: 8px;"></div>
+
+<div id="workers-list"></div>
+
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+let map;
+let markers = [];
+
+// Initialize map
+function initMap() {
+  // Default to India center
+  map = L.map('map').setView([20.5937, 78.9629], 5);
+  
+  // Add OpenStreetMap tiles (free!)
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors',
+    maxZoom: 19
+  }).addTo(map);
+  
+  // Try to get user's location
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(function(position) {
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+      map.setView([lat, lng], 13);
+      
+      // Add marker for user location
+      L.marker([lat, lng], {
+        icon: L.icon({
+          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+          shadowSize: [41, 41]
+        })
+      }).addTo(map).bindPopup('Your Location').openPopup();
+      
+      // Find nearby workers
+      findNearbyWorkers();
+    });
+  }
+}
+
+async function findNearbyWorkers() {
+  const location = document.getElementById('location-input').value || '{{ user.location or "Mumbai, India" }}';
+  
+  try {
+    // Geocode the location using Nominatim (free OpenStreetMap geocoding)
+    // Add accept-language=en to get English addresses
+    const geocodeResponse = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(location)}&accept-language=en`);
+    const geocodeData = await geocodeResponse.json();
+    
+    if (geocodeData.length === 0) {
+      alert('Location not found. Please try a different location.');
+      return;
+    }
+    
+    const lat = parseFloat(geocodeData[0].lat);
+    const lng = parseFloat(geocodeData[0].lon);
+    
+    // Center map on location
+    map.setView([lat, lng], 13);
+    
+    // Clear existing markers
+    markers.forEach(marker => map.removeLayer(marker));
+    markers = [];
+    
+    // Add marker for searched location
+    const userMarker = L.marker([lat, lng], {
+      icon: L.icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+      })
+    }).addTo(map).bindPopup('Your Location');
+    markers.push(userMarker);
+    
+    // Fetch nearby workers from API
+    const response = await fetch(`/api/nearby-workers?lat=${lat}&lng=${lng}&radius=10`);
+    const data = await response.json();
+    
+    // Display workers on map
+    const workersList = document.getElementById('workers-list');
+    workersList.innerHTML = '<h3>Nearby Workers</h3>';
+    
+    if (data.workers && data.workers.length > 0) {
+      data.workers.forEach(worker => {
+        // Add marker for worker
+        const workerMarker = L.marker([worker.lat, worker.lng], {
+          icon: L.icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41]
+          })
+        }).addTo(map);
+        
+        // Create popup content
+        const popupContent = `
+          <div style="min-width: 200px;">
+            <h4 style="margin: 0 0 8px 0;">${worker.name}</h4>
+            <p style="margin: 4px 0;"><strong>Services:</strong> ${worker.services}</p>
+            <p style="margin: 4px 0;"><strong>Distance:</strong> ${worker.distance.toFixed(1)} km</p>
+            <p style="margin: 4px 0;"><strong>Rating:</strong> ⭐ ${worker.rating || 'New'}</p>
+            <a href="/worker/${worker.id}" class="btn" style="margin-top: 8px; display: inline-block;">View Profile</a>
+          </div>
+        `;
+        workerMarker.bindPopup(popupContent);
+        markers.push(workerMarker);
+        
+        // Add to list
+        workersList.innerHTML += `
+          <div class="card" style="margin: 10px 0;">
+            <h4>${worker.name} ${worker.worker_id ? '(' + worker.worker_id + ')' : ''}</h4>
+            <p><strong>Services:</strong> ${worker.services}</p>
+            <p><strong>Location:</strong> ${worker.location}</p>
+            <p><strong>Distance:</strong> ${worker.distance.toFixed(1)} km away</p>
+            <p><strong>Rating:</strong> ${worker.rating ? '⭐ ' + worker.rating + '/5' : 'New worker'}</p>
+            <a href="/worker/${worker.id}" class="btn">View Profile</a>
+            <a href="/request/${worker.id}" class="btn">Request Service</a>
+          </div>
+        `;
+      });
+    } else {
+      workersList.innerHTML += '<p class="muted">No workers found nearby. Try increasing the search radius.</p>';
+    }
+    
+  } catch (error) {
+    console.error('Error finding workers:', error);
+    alert('Error finding workers. Please try again.');
+  }
+}
+
+// Initialize map when page loads
+document.addEventListener('DOMContentLoaded', initMap);
+</script>
+
+<style>
+.leaflet-popup-content {
+  margin: 8px;
+}
+.leaflet-popup-content h4 {
+  margin: 0 0 8px 0;
+}
+</style>
+{% endblock %}

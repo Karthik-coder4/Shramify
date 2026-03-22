@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Map Test - Shramify</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #map { width: 100%; height: 400px; border: 2px solid #0ea5e9; border-radius: 12px; margin: 20px 0; }
+    .info { background: #e0f2fe; padding: 15px; border-radius: 8px; margin: 10px 0; }
+    .success { background: #d1fae5; }
+    .error { background: #fee2e2; }
+  </style>
+</head>
+<body>
+  <h1>🗺️ Google Maps Test Page</h1>
+  
+  <div class="info">
+    <strong>API Key Status:</strong> <span id="api-status">Checking...</span><br>
+    <strong>Location:</strong> Mumbai, India<br>
+    <strong>Expected:</strong> Map should show Mumbai with a blue marker
+  </div>
+  
+  <div id="map"></div>
+  
+  <div id="console-log" style="background: #f1f5f9; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 12px;">
+    <strong>Console Log:</strong><br>
+    <div id="log-content"></div>
+  </div>
+
+  <script>
+    function log(message) {
+      const logDiv = document.getElementById('log-content');
+      const time = new Date().toLocaleTimeString();
+      logDiv.innerHTML += `[${time}] ${message}<br>`;
+      console.log(message);
+    }
+
+    log('Page loaded');
+    
+    window.initMap = function() {
+      log('initMap called');
+      const statusEl = document.getElementById('api-status');
+      
+      try {
+        if (typeof google === 'undefined') {
+          log('ERROR: Google Maps not loaded');
+          statusEl.textContent = '❌ Google Maps API not loaded';
+          statusEl.parentElement.className = 'info error';
+          return;
+        }
+        
+        log('Google Maps API loaded successfully');
+        statusEl.textContent = '✅ API Key Working';
+        statusEl.parentElement.className = 'info success';
+        
+        const mapDiv = document.getElementById('map');
+        log('Creating map...');
+        
+        const map = new google.maps.Map(mapDiv, {
+          center: { lat: 19.0760, lng: 72.8777 }, // Mumbai coordinates
+          zoom: 12
+        });
+        
+        log('Map created successfully');
+        
+        new google.maps.Marker({
+          position: { lat: 19.0760, lng: 72.8777 },
+          map: map,
+          title: 'Mumbai',
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 12,
+            fillColor: "#0ea5e9",
+            fillOpacity: 1,
+            strokeColor: "#ffffff",
+            strokeWeight: 3
+          }
+        });
+        
+        log('Marker added successfully');
+        
+      } catch (error) {
+        log('ERROR: ' + error.message);
+        statusEl.textContent = '❌ Error: ' + error.message;
+        statusEl.parentElement.className = 'info error';
+      }
+    };
+    
+    log('Waiting for Google Maps API...');
+  </script>
+  
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDs8ac8C-RZTqHjOXUHCrLUj3QSSeINy0U&callback=initMap" async defer></script>
+  
+  <div style="margin-top: 20px; padding: 15px; background: #fef3c7; border-radius: 8px;">
+    <strong>⚠️ Troubleshooting Tips:</strong>
+    <ul>
+      <li>Check browser console (F12) for errors</li>
+      <li>Verify API key is enabled for Maps JavaScript API</li>
+      <li>Check if billing is enabled on Google Cloud Console</li>
+      <li>Ensure domain restrictions allow localhost</li>
+    </ul>
+  </div>
+  
+  <p><a href="/" style="color: #0ea5e9;">← Back to Home</a></p>
+</body>
+</html>

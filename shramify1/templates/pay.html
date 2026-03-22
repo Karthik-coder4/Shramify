@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Payment</h2>
+<div class="card">
+  {% if worker %}
+    <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px;">
+      {% if worker.profile_image %}
+        <img src="/{{ worker.profile_image }}" alt="Worker picture" style="width:64px; height:64px; object-fit:cover; border-radius:9999px; border:2px solid #4b5563;">
+      {% endif %}
+      <div>
+        <div><strong>Worker:</strong> {{ worker.name }}</div>
+        <div class="muted">{{ worker.location }}</div>
+      </div>
+    </div>
+  {% endif %}
+  <div><strong>Service:</strong> {{ req.service_type }}</div>
+  <div><strong>Amount:</strong> {{ req.currency or 'INR' }} {{ '%.0f' % (amount or 0) }}</div>
+
+  {% set photos = req.get('photos') or [] %}
+  {% if photos %}
+    <div class="muted" style="margin-top:10px;">Work photos uploaded by worker:</div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 12px 0;">
+      {% for p in photos %}
+        <a href="{{ url_for('static', filename=p) }}" target="_blank">
+          <img src="{{ url_for('static', filename=p) }}" alt="Work photo" style="width:100px; height:100px; object-fit:cover; border-radius:6px; border:1px solid #ddd;" />
+        </a>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="muted">Choose a payment method:</div>
+  <form method="post" action="{{ url_for('pay_request', rid=(req._id|string)) }}" style="margin-top:10px;">
+    <label style="display:block; margin-bottom:6px;">
+      <input type="radio" name="method" value="online" id="online-radio"> 
+      <span>💳 Online Payment</span>
+      <small class="muted" style="display:block; margin-left:20px; margin-top:2px;" id="online-status">
+        UPI, Cards, Net Banking via Razorpay
+      </small>
+    </label>
+    <label style="display:block; margin-bottom:12px;">
+      <input type="radio" name="method" value="cash" checked> 
+      <span>💵 Cash Payment</span>
+      <small class="muted" style="display:block; margin-left:20px; margin-top:2px;">
+        Pay directly to the worker
+      </small>
+    </label>
+    <button type="submit">Proceed</button>
+    <a class="btn" href="{{ url_for('my_requests') }}" style="margin-left:8px;">Cancel</a>
+  </form>
+</div>
+{% endblock %}

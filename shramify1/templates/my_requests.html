@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>My Requests</h2>
+<div class="list">
+  {% for r in reqs %}
+    <div class="card row">
+      <div class="col">
+        <div><strong>{{ r.service_type }}</strong></div>
+        <div class="muted">{{ r.created_at.strftime('%Y-%m-%d') }}</div>
+        <div>Status: <strong>{{ r.status }}</strong></div>
+        {% if r.customer_offer and user.role == 'worker' %}
+          <div style="background: rgba(34, 197, 94, 0.1); padding: 8px; border-radius: 6px; margin: 8px 0; border-left: 4px solid #22c55e;">
+            <strong>💰 Customer Offer: ₹{{ '%.0f' % r.customer_offer }}</strong>
+            <small class="muted" style="display: block; margin-top: 2px;">Customer is willing to pay this amount</small>
+          </div>
+        {% elif r.customer_offer and user.role == 'customer' %}
+          <div style="background: rgba(59, 130, 246, 0.1); padding: 8px; border-radius: 6px; margin: 8px 0; border-left: 4px solid #3b82f6;">
+            <strong>💰 Your Offer: ₹{{ '%.0f' % r.customer_offer }}</strong>
+          </div>
+        {% endif %}
+        <div>{{ r.details }}</div>
+        {% set items = r.get('items') or [] %}
+        {% if items %}
+          <div class="muted" style="margin-top:6px;">Items:</div>
+          <ul>
+            {% for it in items %}
+              <li>{{ it.type }} × {{ it.qty }} hours — ₹{{ '%.0f' % it.line_total }}</li>
+            {% endfor %}
+          </ul>
+          <div><strong>Requested Total:</strong> ₹{{ '%.0f' % (r.requested_total or 0) }}</div>
+          {% if r.agreed_total %}
+            <div><strong>Agreed Total:</strong> ₹{{ '%.0f' % r.agreed_total }}</div>
+          {% endif %}
+        {% endif %}
+
+        {% set photos = r.get('photos') or [] %}
+        {% if photos %}
+          <div class="muted" style="margin-top:6px;">Photos:</div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            {% for p in photos %}
+              <a href="{{ url_for('static', filename=p) }}" target="_blank">
+                <img src="{{ url_for('static', filename=p) }}" alt="photo" style="width:100px; height:100px; object-fit:cover; border-radius:6px; border:1px solid #ddd;" />
+              </a>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+      <div class="col right">
+        {% if user.role == 'worker' %}
+          <form method="post" action="{{ url_for('update_request_status', rid=(r._id|string)) }}" class="inline">
+            {% if r.status == 'pending' %}
+              <div style="margin-bottom: 8px;">
+                <label style="display: block; margin-bottom: 4px;"><strong>Agreed Total ₹</strong></label>
+                <input name="agreed_total" type="number" step="0.01" min="0" 
+                       value="{{ r.customer_offer or r.requested_total or '' }}" 
+                       style="width:120px; margin-bottom: 4px;">
+                {% if r.customer_offer %}
+                  <small class="muted" style="display: block;">
+                    💡 Customer offered ₹{{ '%.0f' % r.customer_offer }}. You can accept this amount or negotiate.
+                  </small>
+                {% endif %}
+              </div>
+            {% endif %}
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button name="action" value="accept" {% if r.status != 'pending' %}disabled{% endif %} class="btn">
+                {% if r.customer_offer %}Accept Offer{% else %}Accept{% endif %}
+              </button>
+              <button name="action" value="reject" {% if r.status != 'pending' %}disabled{% endif %} class="btn ghost">Reject</button>
+              <button name="action" value="complete" {% if r.status != 'accepted' %}disabled{% endif %} class="btn">Complete</button>
+            </div>
+          </form>
+
+          {% if r.status in ['accepted', 'awaiting_approval'] %}
+            <form method="post" action="{{ url_for('upload_request_photos', rid=(r._id|string)) }}" enctype="multipart/form-data" style="margin-top:8px;">
+              <input type="file" name="photos" multiple accept="image/*">
+              <button type="submit">Upload Photos</button>
+            </form>
+          {% endif %}
+        {% else %}
+          {% if r.status == 'awaiting_approval' %}
+            <form method="post" action="{{ url_for('approve_request', rid=(r._id|string)) }}">
+              <button class="btn" type="submit">Approve Work</button>
+            </form>
+          {% elif r.status == 'approved' %}
+            <a class="btn" href="{{ url_for('pay_request', rid=(r._id|string)) }}">Pay ₹{{ '%.0f' % (r.agreed_total or r.requested_total or 0) }}</a>
+          {% elif r.status in ['paid', 'completed'] %}
+            <a class="btn" href="{{ url_for('rate_request', rid=(r._id|string)) }}">Rate</a>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  {% else %}
+    <p>No requests yet.</p>
+  {% endfor %}
+</div>
+{% endblock %}

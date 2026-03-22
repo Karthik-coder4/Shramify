@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Report Worker</h2>
+
+<div class="card">
+  <h3>Worker Details</h3>
+  <div style="margin-bottom: 20px;">
+    <div><strong>Name:</strong> {{ worker.name }}</div>
+    <div><strong>Location:</strong> {{ worker.location }}</div>
+    <div><strong>Phone:</strong> {{ worker.phone }}</div>
+  </div>
+  
+  <form method="post" style="max-width: 600px;">
+    <h3>Report Details</h3>
+    
+    <label for="reason">Reason for Report *</label>
+    <select name="reason" id="reason" required>
+      <option value="">Select a reason</option>
+      <option value="incomplete_work">Incomplete Work</option>
+      <option value="poor_quality">Poor Quality Work</option>
+      <option value="no_show">Did Not Show Up</option>
+      <option value="unprofessional">Unprofessional Behavior</option>
+      <option value="overcharging">Overcharging</option>
+      <option value="damaged_property">Damaged Property</option>
+      <option value="safety_concern">Safety Concern</option>
+      <option value="other">Other</option>
+    </select>
+    
+    <label for="description">Description *</label>
+    <textarea name="description" id="description" rows="6" placeholder="Please provide detailed information about the issue..." required></textarea>
+    
+    <label for="service_request_id">Related Service Request ID (if applicable)</label>
+    <input type="text" name="service_request_id" id="service_request_id" placeholder="e.g., 507f1f77bcf86cd799439011">
+    
+    <label for="incident_date">Date of Incident</label>
+    <input type="date" name="incident_date" id="incident_date" max="{{ today }}">
+    
+    <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+      <strong>⚠️ Important:</strong>
+      <ul style="margin: 8px 0 0 20px; font-size: 0.9rem;">
+        <li>Please provide accurate and truthful information</li>
+        <li>False reports may result in account suspension</li>
+        <li>We will investigate all reports thoroughly</li>
+        <li>You may be contacted for additional information</li>
+      </ul>
+    </div>
+    
+    <div style="display: flex; gap: 12px; margin-top: 20px;">
+      <button type="submit" class="btn" style="background: linear-gradient(135deg, #ef4444, #dc2626); border: none;">Submit Report</button>
+      <a href="{{ url_for('view_worker', worker_id=worker._id) }}" class="btn ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+
+{% if user_reports %}
+<div class="card" style="margin-top: 20px;">
+  <h3>Your Previous Reports</h3>
+  {% for report in user_reports %}
+    <div style="padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 12px;">
+      <div style="display: flex; justify-content: space-between; align-items: start;">
+        <div>
+          <strong>{{ report.reason.replace('_', ' ').title() }}</strong>
+          <div class="muted" style="font-size: 0.85rem;">{{ report.created_at.strftime('%B %d, %Y') }}</div>
+        </div>
+        <span class="chip" style="
+          {% if report.status == 'pending' %}background: rgba(251,191,36,.2); color: #fcd34d;
+          {% elif report.status == 'investigating' %}background: rgba(59,130,246,.2); color: #93c5fd;
+          {% elif report.status == 'resolved' %}background: rgba(16,185,129,.2); color: #6ee7b7;
+          {% elif report.status == 'dismissed' %}background: rgba(156,163,175,.2); color: #9ca3af;
+          {% endif %}
+        ">{{ report.status.title() }}</span>
+      </div>
+      <p style="margin: 8px 0 0 0; font-size: 0.9rem;">{{ report.description[:150] }}{% if report.description|length > 150 %}...{% endif %}</p>
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}
