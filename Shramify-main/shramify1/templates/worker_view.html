@@ -1,0 +1,171 @@
+{% extends 'base.html' %}
+{% block content %}
+<div style="max-width:860px; margin:0 auto;">
+  <div class="card" style="padding:28px; margin-bottom:20px;">
+    <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start;">
+      <div style="flex-shrink:0;">
+        {% if w.profile_image %}
+          <img src="/{{ w.profile_image }}" alt="{{ w.name }}" style="width:110px;height:110px;object-fit:cover;border-radius:50%;border:3px solid var(--border);">
+        {% else %}
+          <div style="width:110px;height:110px;border-radius:50%;background:linear-gradient(135deg,#fbbf24,#f59e0b);display:flex;align-items:center;justify-content:center;font-size:2.5rem;font-weight:700;color:#0f0f0f;">{{ w.name[0]|upper }}</div>
+        {% endif %}
+      </div>
+      <div style="flex:1; min-width:200px;">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px;">
+          <h2 style="margin:0;">{{ w.name }}</h2>
+          {% if w.available == false %}
+            <span style="background:#fee2e2;color:#ef4444;font-size:0.75rem;padding:3px 10px;border-radius:99px;font-weight:600;">● Unavailable</span>
+          {% else %}
+            <span style="background:#d1fae5;color:#059669;font-size:0.75rem;padding:3px 10px;border-radius:99px;font-weight:600;">● Available</span>
+          {% endif %}
+        </div>
+        {% if badges %}
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+            {% for b in badges %}
+              <span style="background:rgba(255,255,255,0.08);border:1px solid {{ b.color }};color:{{ b.color }};font-size:0.75rem;padding:3px 10px;border-radius:99px;font-weight:600;">{{ b.icon }} {{ b.label }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
+        <div class="muted" style="margin-bottom:4px;">📍 {{ w.location }}</div>
+        <div class="muted" style="margin-bottom:4px;">📞 {{ w.phone }}</div>
+        <div class="muted" style="margin-bottom:8px;">🔧 {{ (w.worker_type or 'informal')|capitalize }}{% if w.informal_kind %} · {{ w.informal_kind }}{% endif %}</div>
+        {% if revs %}
+          {% set total_rating = namespace(val=0) %}
+          {% for r in revs %}{% set total_rating.val = total_rating.val + r.rating %}{% endfor %}
+          {% set avg = total_rating.val / revs|length %}
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:1.4rem;font-weight:700;color:#fbbf24;">{{ '%.1f' % avg }}</span>
+            <span style="color:#fbbf24;font-size:1.1rem;">{% for i in range(1,6) %}{% if i <= avg|round(0,'floor')|int %}★{% else %}☆{% endif %}{% endfor %}</span>
+            <span class="muted">({{ revs|length }} review{{ 's' if revs|length != 1 else '' }})</span>
+          </div>
+        {% else %}
+          <div class="muted">No reviews yet</div>
+        {% endif %}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;min-width:160px;">
+        {% if user %}
+          {% if user.role == 'customer' %}
+            <button id="fav-btn" onclick="toggleFavorite('{{ w._id }}')" style="padding:10px 16px;border-radius:10px;border:2px solid {% if is_favorite %}#ef4444{% else %}var(--border){% endif %};background:{% if is_favorite %}rgba(239,68,68,0.1){% else %}transparent{% endif %};color:{% if is_favorite %}#ef4444{% else %}var(--text-muted){% endif %};cursor:pointer;font-size:0.9rem;font-weight:600;">
+              {% if is_favorite %}❤️ Saved{% else %}🤍 Save{% endif %}
+            </button>
+            {% if w.available != false %}
+              <a class="btn" href="{{ url_for('request_service', worker_id=(w._id|string)) }}" style="text-align:center;padding:10px 16px;">🛠️ Book Now</a>
+            {% else %}
+              <button disabled style="padding:10px 16px;border-radius:10px;border:2px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-muted);cursor:not-allowed;font-size:0.9rem;">🚫 Unavailable</button>
+            {% endif %}
+            <a href="{{ url_for('report_worker', worker_id=(w._id|string)) }}" style="text-align:center;padding:8px 16px;border-radius:10px;border:1px solid #ef4444;color:#ef4444;font-size:0.85rem;text-decoration:none;">⚠️ Report</a>
+          {% else %}
+            <a class="btn" href="{{ url_for('request_service', worker_id=(w._id|string)) }}" style="text-align:center;padding:10px 16px;">🛠️ Book Now</a>
+          {% endif %}
+        {% else %}
+          <a class="btn" href="{{ url_for('login') }}" style="text-align:center;padding:10px 16px;">Login to Book</a>
+        {% endif %}
+        <a href="https://wa.me/?text={{ ('Check out ' + w.name + ' on Shramify!')|urlencode }}" target="_blank" rel="noopener" style="text-align:center;padding:8px 16px;border-radius:10px;border:1px solid #25d366;color:#25d366;font-size:0.85rem;text-decoration:none;">📲 Share</a>
+      </div>
+    </div>
+    {% if w.bio %}
+      <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border);">
+        <strong>About</strong>
+        <p style="margin:8px 0 0 0;color:var(--text-muted);">{{ w.bio }}</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="card" style="padding:24px;margin-bottom:20px;">
+    <h3 style="margin:0 0 16px 0;">🔧 Services & Rates</h3>
+    {% if w.services %}
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;">
+        {% for s in w.services %}
+          <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:10px;padding:14px;">
+            <div style="font-weight:600;margin-bottom:4px;">{{ s.type }}</div>
+            <div style="font-size:1.1rem;color:#fbbf24;font-weight:700;">₹{{ '%.0f' % s.price }}<span style="font-size:0.8rem;color:var(--text-muted);font-weight:400;">/hr</span></div>
+            {% if s.desc %}<div class="muted" style="font-size:0.85rem;margin-top:4px;">{{ s.desc }}</div>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+      {% if user and (user.role == 'customer' or user.role == 'admin') %}
+        {% if w.available != false %}
+          <div style="margin-top:16px;"><a class="btn" href="{{ url_for('request_service', worker_id=(w._id|string)) }}">🛠️ Book This Worker</a></div>
+        {% endif %}
+      {% endif %}
+    {% else %}
+      <p class="muted">No services listed yet.</p>
+      {% if user and w.available != false %}
+        <a class="btn" href="{{ url_for('request_service', worker_id=(w._id|string)) }}" style="display:inline-block;margin-top:8px;">🛠️ Book Anyway</a>
+      {% endif %}
+    {% endif %}
+  </div>
+
+  <div class="card" style="padding:24px;margin-bottom:20px;">
+    <h3 style="margin:0 0 12px 0;">📍 Service Area</h3>
+    <div id="worker-map" style="width:100%;height:280px;border-radius:12px;border:1px solid var(--border);"></div>
+    <p class="muted" style="margin:8px 0 0 0;font-size:0.85rem;">Approximate location: {{ w.location }}</p>
+  </div>
+
+  <div class="card" style="padding:24px;">
+    <h3 style="margin:0 0 16px 0;">⭐ Reviews ({{ revs|length }})</h3>
+    {% if revs %}
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        {% for rev in revs %}
+          <div style="border:1px solid var(--border);border-radius:10px;padding:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="color:#fbbf24;font-size:1.1rem;">{% for i in range(1,6) %}{% if i <= rev.rating %}★{% else %}☆{% endif %}{% endfor %}</span>
+              <span class="muted" style="font-size:0.8rem;">{{ rev.created_at.strftime('%d %b %Y') if rev.created_at else '' }}</span>
+            </div>
+            {% if rev.feedback %}<p style="margin:0;color:var(--text-muted);font-size:0.9rem;">{{ rev.feedback }}</p>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div style="text-align:center;padding:30px;color:var(--text-muted);">
+        <div style="font-size:2.5rem;margin-bottom:10px;">💬</div>
+        <p>No reviews yet. Be the first to book and review!</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+async function toggleFavorite(workerId) {
+  const btn = document.getElementById('fav-btn');
+  if (!btn) return;
+  try {
+    const res = await fetch('/favorites/toggle/' + workerId, { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      if (data.saved) {
+        btn.innerHTML = '❤️ Saved';
+        btn.style.borderColor = '#ef4444';
+        btn.style.background = 'rgba(239,68,68,0.1)';
+        btn.style.color = '#ef4444';
+      } else {
+        btn.innerHTML = '🤍 Save';
+        btn.style.borderColor = 'var(--border)';
+        btn.style.background = 'transparent';
+        btn.style.color = 'var(--text-muted)';
+      }
+    }
+  } catch(e) { console.error(e); }
+}
+
+window.initWorkerMap = async function() {
+  const mapDiv = document.getElementById('worker-map');
+  if (!mapDiv) return;
+  const location = {{ w.location | tojson }};
+  try {
+    const geo = await window.LeafletUtils.geocode(location);
+    if (geo) {
+      const map = window.LeafletUtils.createMap('worker-map', { center: [geo.lat, geo.lng], zoom: 13 });
+      L.marker([geo.lat, geo.lng], {
+        icon: L.divIcon({ className: '', html: '<div style="background:#fbbf24;width:22px;height:22px;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4);"></div>', iconSize: [22,22], iconAnchor: [11,11] })
+      }).addTo(map).bindPopup('<strong>' + {{ w.name | tojson }} + '</strong>');
+      L.circle([geo.lat, geo.lng], { radius:1500, fillColor:'#fbbf24', fillOpacity:0.1, color:'#fbbf24', opacity:0.4, weight:2 }).addTo(map);
+    } else {
+      mapDiv.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);">📍 ' + location + '</div>';
+    }
+  } catch(e) {
+    mapDiv.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);">📍 ' + location + '</div>';
+  }
+};
+</script>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Rate Service</h2>
+<form method="post" class="form">
+  <div class="stars" data-input="rating"></div>
+  <input type="hidden" name="rating" id="rating" value="5">
+  <label>Feedback<textarea name="feedback" rows="3" placeholder="How was the service?"></textarea></label>
+  <button type="submit">Submit</button>
+</form>
+<script>
+  // Basic star widget
+  const container = document.querySelector('.stars');
+  const input = document.getElementById('rating');
+  for (let i=1;i<=5;i++){ const s=document.createElement('span'); s.textContent='★'; s.dataset.v=i; s.onclick=()=>{ input.value=i; [...container.children].forEach((c,idx)=>c.classList.toggle('active', idx<i)); }; container.appendChild(s);} 
+  [...container.children].forEach((c,idx)=>c.classList.toggle('active', idx<5));
+</script>
+{% endblock %}

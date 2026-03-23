@@ -1,0 +1,141 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>🛡️ Admin Dashboard</h2>
+
+<!-- Stats Grid -->
+<div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:16px; margin-bottom:28px;">
+  <div class="card" style="text-align:center; padding:20px;">
+    <div style="font-size:2rem; font-weight:700; color:var(--primary);">{{ stats.total_users }}</div>
+    <div class="muted">Total Users</div>
+  </div>
+  <div class="card" style="text-align:center; padding:20px;">
+    <div style="font-size:2rem; font-weight:700; color:#10b981;">{{ stats.total_workers }}</div>
+    <div class="muted">Workers</div>
+  </div>
+  <div class="card" style="text-align:center; padding:20px;">
+    <div style="font-size:2rem; font-weight:700; color:#6366f1;">{{ stats.total_customers }}</div>
+    <div class="muted">Customers</div>
+  </div>
+  <div class="card" style="text-align:center; padding:20px;">
+    <div style="font-size:2rem; font-weight:700; color:var(--warning);">{{ stats.pending_requests }}</div>
+    <div class="muted">Pending Requests</div>
+  </div>
+  <div class="card" style="text-align:center; padding:20px;">
+    <div style="font-size:2rem; font-weight:700; color:var(--success);">{{ stats.completed_requests }}</div>
+    <div class="muted">Completed Jobs</div>
+  </div>
+  <div class="card" style="text-align:center; padding:20px;">
+    <div style="font-size:2rem; font-weight:700; color:var(--danger);">{{ stats.pending_reports }}</div>
+    <div class="muted">Pending Reports</div>
+  </div>
+</div>
+
+<!-- Recent Users -->
+<div class="card" style="margin-bottom:24px;">
+  <h3>👥 Recent Users</h3>
+  <div style="overflow-x:auto;">
+    <table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
+      <thead>
+        <tr style="border-bottom:2px solid var(--border);">
+          <th style="text-align:left; padding:8px;">Name</th>
+          <th style="text-align:left; padding:8px;">Role</th>
+          <th style="text-align:left; padding:8px;">Email</th>
+          <th style="text-align:left; padding:8px;">Joined</th>
+          <th style="text-align:left; padding:8px;">Status</th>
+          <th style="text-align:left; padding:8px;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in recent_users %}
+          <tr style="border-bottom:1px solid var(--border-light);">
+            <td style="padding:8px;">{{ u.name }}</td>
+            <td style="padding:8px;"><span class="chip">{{ u.role }}</span></td>
+            <td style="padding:8px; color:var(--text-muted);">{{ u.email }}</td>
+            <td style="padding:8px; color:var(--text-muted);">{{ u.created_at.strftime('%d %b %Y') if u.created_at else '—' }}</td>
+            <td style="padding:8px;">
+              {% if u.banned %}
+                <span style="color:#ef4444; font-size:0.8rem;">🚫 Banned</span>
+              {% else %}
+                <span style="color:#10b981; font-size:0.8rem;">✅ Active</span>
+              {% endif %}
+            </td>
+            <td style="padding:8px;">
+              <form method="post" action="{{ url_for('admin_toggle_ban', uid=(u._id|string)) }}" style="display:inline;">
+                <button type="submit" style="background:{% if u.banned %}#10b981{% else %}#ef4444{% endif %}; color:white; border:none; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.8rem;">
+                  {% if u.banned %}Unban{% else %}Ban{% endif %}
+                </button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Recent Reports -->
+<div class="card" style="margin-bottom:24px;">
+  <h3>⚠️ Recent Reports</h3>
+  {% if recent_reports %}
+    {% for rep in recent_reports %}
+      <div style="border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
+          <div>
+            <strong>{{ rep.reason | replace('_', ' ') | title }}</strong>
+            <span style="margin-left:8px; font-size:0.8rem; padding:2px 8px; border-radius:99px;
+              background:{% if rep.status == 'pending' %}#fef3c7{% elif rep.status == 'resolved' %}#d1fae5{% else %}#fee2e2{% endif %};
+              color:{% if rep.status == 'pending' %}#92400e{% elif rep.status == 'resolved' %}#065f46{% else %}#991b1b{% endif %};">
+              {{ rep.status | title }}
+            </span>
+            <div class="muted" style="margin-top:4px; font-size:0.85rem;">
+              Worker: <strong>{{ rep.worker_name }}</strong> · Reported by: {{ rep.customer_name }}
+            </div>
+            <div style="margin-top:6px; font-size:0.9rem;">{{ rep.description[:150] }}{% if rep.description|length > 150 %}...{% endif %}</div>
+          </div>
+          {% if rep.status == 'pending' %}
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <form method="post" action="{{ url_for('admin_resolve_report', rid=(rep._id|string)) }}" style="display:inline;">
+                <input type="hidden" name="resolution" value="resolved">
+                <button type="submit" style="background:#10b981; color:white; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.85rem;">✅ Resolve</button>
+              </form>
+              <form method="post" action="{{ url_for('admin_resolve_report', rid=(rep._id|string)) }}" style="display:inline;">
+                <input type="hidden" name="resolution" value="dismissed">
+                <button type="submit" style="background:#6b7280; color:white; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.85rem;">Dismiss</button>
+              </form>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="muted">No reports yet.</p>
+  {% endif %}
+</div>
+
+<!-- Recent Requests -->
+<div class="card">
+  <h3>📋 Recent Service Requests</h3>
+  <div style="overflow-x:auto;">
+    <table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
+      <thead>
+        <tr style="border-bottom:2px solid var(--border);">
+          <th style="text-align:left; padding:8px;">Service</th>
+          <th style="text-align:left; padding:8px;">Status</th>
+          <th style="text-align:left; padding:8px;">Amount</th>
+          <th style="text-align:left; padding:8px;">Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in recent_requests %}
+          <tr style="border-bottom:1px solid var(--border-light);">
+            <td style="padding:8px;">{{ r.service_type or '—' }}</td>
+            <td style="padding:8px;"><span class="chip">{{ r.status }}</span></td>
+            <td style="padding:8px;">₹{{ '%.0f' % (r.agreed_total or r.requested_total or 0) }}</td>
+            <td style="padding:8px; color:var(--text-muted);">{{ r.created_at.strftime('%d %b %Y') if r.created_at else '—' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

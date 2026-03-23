@@ -1,0 +1,147 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2> Worker Profile</h2>
+<div class="card">
+  <div class="row">
+    <div class="col">
+      {% if user.profile_image %}
+        <div style="margin-bottom: 12px;">
+          <img src="/{{ user.profile_image }}" alt="Profile picture" style="width: 120px; height: 120px; object-fit: cover; border-radius: 9999px; border: 2px solid #4b5563;">
+        </div>
+      {% endif %}
+      <div><strong>Name:</strong> {{ user.name }}</div>
+      <div><strong>Location:</strong> <span id="profile-location" data-full-location="{{ user.location }}">{{ user.location }}</span></div>
+      <div><strong>Phone:</strong> {{ user.phone }}</div>
+      <div><strong>Worker Type:</strong> {{ user.worker_type or 'informal' }}</div>
+      {% if (user.worker_type or 'informal') == 'informal' %}
+        <div><strong>Informal Category:</strong> {{ user.informal_kind or '—' }}</div>
+      {% endif %}
+      <div><strong>Verification Status:</strong> <span style="color: #10b981;">✅ Active</span></div>
+      <div><strong>Rating:</strong> {{ '%.1f' % avg if avg else 'N/A' }} ({{ count }} reviews)</div>
+    </div>
+    <div class="col">
+      <div><strong>Bio</strong></div>
+      <p>{{ user.bio or 'No bio yet.' }}</p>
+      <div><strong>Services</strong></div>
+      <ul>
+        {% for s in user.services %}
+          <li>{{ s.type }} — ₹{{ '%.0f' % s.price }} <span class="muted">{{ s.desc }}</span></li>
+        {% else %}
+          <li>No services listed yet.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  
+  <div style="margin-top: 20px;">
+    <h3>Your Service Area</h3>
+    <div id="profile-map" style="width: 100%; height: 300px; border-radius: 12px; border: 1px solid #e2e8f0;"></div>
+    <p class="muted" style="margin-top: 8px; font-size: 0.85rem;">📍 This map shows your approximate service location based on: <strong>{{ user.location }}</strong></p>
+  </div>
+</div>
+
+<script>
+// Function to format worker location for display (clean up long addresses)
+function formatWorkerLocation(location) {
+  if (!location) return 'Location not specified';
+  
+  // If it's a long address with postal code and country, try to shorten it
+  if (location.includes(',')) {
+    const parts = location.split(',').map(part => part.trim());
+    
+    // Remove postal codes (6 digits) and country names
+    const filteredParts = parts.filter(part => {
+      return !(/^\d{6}$/.test(part)) && // Remove 6-digit postal codes
+             !part.toLowerCase().includes('india') && // Remove country
+             part.length > 0;
+    });
+    
+    // Take first 2-3 meaningful parts
+    if (filteredParts.length >= 2) {
+      return filteredParts.slice(0, 2).join(', ');
+    } else if (filteredParts.length === 1) {
+      return filteredParts[0];
+    }
+  }
+  
+  // If no commas or short already, return as is
+  return location;
+}
+
+// Format profile location on page load
+document.addEventListener('DOMContentLoaded', function() {
+  const locationSpan = document.getElementById('profile-location');
+  if (locationSpan) {
+    const fullLocation = locationSpan.getAttribute('data-full-location');
+    locationSpan.textContent = formatWorkerLocation(fullLocation);
+  }
+});
+
+window.initProfileMap = async function() {
+  const mapDiv = document.getElementById('profile-map');
+  if (!mapDiv) return;
+  
+  const location = "{{ user.location }}";
+  
+  try {
+    const geocodeResult = await window.LeafletUtils.geocode(location);
+    
+    if (geocodeResult) {
+      // Create Leaflet map
+      const map = window.LeafletUtils.createMap('profile-map', {
+        center: [geocodeResult.lat, geocodeResult.lng],
+        zoom: 13
+      });
+      
+      // Add worker marker
+      const marker = L.marker([geocodeResult.lat, geocodeResult.lng], {
+        icon: L.divIcon({
+          className: 'custom-marker profile-location-marker',
+          html: '<div style="background: #10b981; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.3);"></div>',
+          iconSize: [20, 20],
+          iconAnchor: [10, 10]
+        })
+      }).addTo(map);
+      
+      marker.bindPopup('<div style="padding: 8px;"><strong>📍 {{ user.name }}</strong><br>Your Service Area</div>');
+      
+      // Add service area circle (1km radius)
+      L.circle([geocodeResult.lat, geocodeResult.lng], {
+        radius: 1000, // 1000 meters
+        fillColor: "#10b981",
+        fillOpacity: 0.15,
+        color: "#10b981",
+        opacity: 0.4,
+        weight: 2
+      }).addTo(map);
+      
+    } else {
+      mapDiv.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#9ca3af;background:rgba(26,26,26,.95);border:1px solid var(--border);border-radius:12px;">📍 Location: ' + location + '</div>';
+    }
+  } catch (error) {
+    console.error('Error initializing profile map:', error);
+    mapDiv.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#9ca3af;background:rgba(26,26,26,.95);border:1px solid var(--border);border-radius:12px;">📍 Location: ' + location + '</div>';
+  }
+};
+</script>
+
+<div style="margin-top: 2rem; display: flex; gap: 1rem; flex-wrap: wrap;">
+  <a class="btn" href="{{ url_for('edit_worker_profile') }}" style="flex: 1; min-width: 200px; text-align: center; padding: 1rem;">
+    <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem;">✏️ Edit Profile</div>
+    <div style="font-size: 0.85rem; opacity: 0.8;">Update bio, services & rates</div>
+  </a>
+
+  <!-- Availability toggle -->
+  <form method="post" action="{{ url_for('toggle_availability') }}" style="flex: 1; min-width: 200px;">
+    <button type="submit" style="width:100%; padding:1rem; border-radius:12px; border:2px solid {% if user.get('available', True) %}#10b981{% else %}#ef4444{% endif %}; background:{% if user.get('available', True) %}rgba(16,185,129,0.1){% else %}rgba(239,68,68,0.1){% endif %}; color:{% if user.get('available', True) %}#10b981{% else %}#ef4444{% endif %}; cursor:pointer; font-size:1rem; font-weight:600; transition:all 0.2s;">
+      {% if user.get('available', True) %}🟢 Available — Click to go Unavailable{% else %}🔴 Unavailable — Click to go Available{% endif %}
+    </button>
+  </form>
+
+  <a class="btn" href="{{ url_for('my_requests') }}" style="flex: 1; min-width: 200px; text-align: center; padding: 1rem;">
+    <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem;">📋 My Requests</div>
+    <div style="font-size: 0.85rem; opacity: 0.8;">View customer requests & manage bookings</div>
+  </a>
+  
+</div>
+{% endblock %}

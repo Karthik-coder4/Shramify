@@ -1,0 +1,534 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="dashboard-header">
+  <h2>🗺️ Find Workers Near You</h2>
+  <p class="muted">Connect with trusted local workers in your area</p>
+</div>
+
+<div class="card" style="margin-bottom: 20px;">
+  <h3>📍 Your Location</h3>
+  <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+    <input type="text" id="customer-location" placeholder="Enter your location" value="{{ user.location or '' }}" style="flex: 1; min-width: 250px;">
+    <button onclick="useMyLocation()" class="btn ghost">📍 Use My Location</button>
+    <button onclick="findNearbyWorkers()" class="btn">🔍 Find Nearby Workers</button>
+    <button id="debug-location-btn" class="btn ghost" style="background: #f59e0b; color: white;">🐛 Debug Location</button>
+  </div>
+  <p class="muted" style="margin-top: 8px; font-size: 0.9rem; color: var(--muted);">We'll show workers within 10km of your location</p>
+</div>
+
+<!-- Debug Location Panel -->
+<div id="debug-panel" class="card" style="display: none; margin-bottom: 20px; background: #1f2937; color: #f3f4f6; border: 1px solid #374151;">
+  <div style="display: flex; justify-content: between; align-items: center; margin-bottom: 12px;">
+    <h3 style="color: #fbbf24; margin: 0;">🐛 Location Debug Information</h3>
+    <button id="close-debug" class="btn ghost" style="background: #374151; color: #9ca3af; padding: 4px 8px; font-size: 0.8rem;">✕ Close</button>
+  </div>
+  <pre id="debug-output" style="background: #111827; padding: 12px; border-radius: 8px; font-size: 0.85rem; line-height: 1.4; overflow-x: auto; white-space: pre-wrap; color: #e5e7eb;"></pre>
+</div>
+
+<div id="map-container" style="display: none;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+    <h3 style="margin: 0;">Workers Near You</h3>
+    <span id="worker-count" class="muted"></span>
+  </div>
+  <div id="nearby-map" style="width: 100%; height: 500px; border-radius: 16px; margin-bottom: 20px; border: 1px solid #e2e8f0;"></div>
+</div>
+
+<div id="workers-list" class="grid" style="margin-top: 20px;"></div>
+
+<div id="loading" class="loading-state" style="display: none; text-align: center; padding: 40px;">
+  <div style="font-size: 3rem; margin-bottom: 16px;">⏳</div>
+  <h3 style="color: var(--text);">Finding workers near you...</h3>
+  <p class="muted" style="color: var(--muted); font-size: 1rem;">Please wait while we search for available workers</p>
+</div>
+
+<script>
+let customerMap = null;
+let customerLocation = null;
+let markers = [];
+let currentLocationMarker = null;
+
+// Function to format location address to be more user-friendly
+function formatLocationAddress(geocodeResult) {
+  if (!geocodeResult || !geocodeResult.address_components) {
+    return geocodeResult?.formatted_address || geocodeResult?.display_name || '';
+  }
+  
+  const components = geocodeResult.address_components;
+  let area = '';
+  let city = '';
+  let state = '';
+  
+  // Extract relevant components
+  for (let component of components) {
+    const types = component.types;
+    
+    if (types.includes('sublocality_level_1') || types.includes('sublocality')) {
+      area = component.long_name;
+    } else if (types.includes('locality')) {
+      city = component.long_name;
+    } else if (types.includes('administrative_area_level_1')) {
+      state = component.short_name;
+    }
+  }
+  
+  // Build user-friendly address
+  let formattedAddress = '';
+  
+  if (area && city) {
+    formattedAddress = `${area}, ${city}`;
+  } else if (city) {
+    formattedAddress = city;
+  } else if (area) {
+    formattedAddress = area;
+  } else {
+    // Fallback to first component that's not a postal code or country
+    for (let component of components) {
+      const types = component.types;
+      if (!types.includes('postal_code') && !types.includes('country') && !types.includes('plus_code')) {
+        formattedAddress = component.long_name;
+        break;
+      }
+    }
+  }
+  
+  // Add state if we have it and it's not already included
+  if (state && !formattedAddress.includes(state)) {
+    formattedAddress += `, ${state}`;
+  }
+  
+  // Fallback to formatted_address if we couldn't build a good one
+  return formattedAddress || geocodeResult.formatted_address || geocodeResult.display_name;
+}
+
+// Function to format worker location for display (clean up long addresses)
+function formatWorkerLocation(location) {
+  if (!location) return 'Location not specified';
+  
+  // If it's a long address with postal code and country, try to shorten it
+  if (location.includes(',')) {
+    const parts = location.split(',').map(part => part.trim());
+    
+    // Remove postal codes (6 digits) and country names
+    const filteredParts = parts.filter(part => {
+      return !(/^\d{6}$/.test(part)) && // Remove 6-digit postal codes
+             !part.toLowerCase().includes('india') && // Remove country
+             part.length > 0;
+    });
+    
+    // Take first 2-3 meaningful parts
+    if (filteredParts.length >= 2) {
+      return filteredParts.slice(0, 2).join(', ');
+    } else if (filteredParts.length === 1) {
+      return filteredParts[0];
+    }
+  }
+  
+  // If no commas or short already, return as is
+  return location;
+}
+
+async function useMyLocation(retryCount = 0) {
+  if (!navigator.geolocation) {
+    alert('Geolocation is not supported by your browser.');
+    return;
+  }
+  
+  document.getElementById('loading').style.display = 'block';
+  
+  try {
+    // Get current location using LeafletUtils
+    const position = await window.LeafletUtils.getCurrentLocation();
+    const lat = position.coords.latitude;
+    const lng = position.coords.longitude;
+    const accuracy = position.coords.accuracy;
+    
+    console.log(`📍 Location found: ${lat}, ${lng} (accuracy: ${Math.round(accuracy)}m)`);
+    
+    // Filter out inaccurate readings (> 100m) and retry
+    if (accuracy > 100 && retryCount < 2) {
+      console.log(`Low accuracy (${Math.round(accuracy)}m), retrying...`);
+      document.getElementById('loading').style.display = 'none';
+      setTimeout(() => useMyLocation(retryCount + 1), 500);
+      return;
+    }
+    
+    customerLocation = { lat, lng };
+    
+    // Reverse geocode to get address using OpenStreetMap
+    const geocodeResult = await window.LeafletUtils.reverseGeocode(lat, lng);
+    
+    if (geocodeResult) {
+      // Format address to be more user-friendly
+      const formattedAddress = formatLocationAddress(geocodeResult);
+      document.getElementById('customer-location').value = formattedAddress;
+      console.log(`📍 Address found: ${formattedAddress}`);
+      findNearbyWorkers();
+    } else {
+      console.warn('Reverse geocoding failed, using coordinates');
+      document.getElementById('customer-location').value = `${lat.toFixed(6)}, ${lng.toFixed(6)} (Coordinates)`;
+      document.getElementById('loading').style.display = 'none';
+      alert('Address lookup failed. Using coordinates as fallback.');
+      findNearbyWorkers(); // Still search with coordinates
+    }
+    
+  } catch (error) {
+    console.error('Location error:', error);
+    
+    // Retry on timeout or unavailable position
+    if (retryCount < 2) {
+      console.log('Location error, retrying...', error.message);
+      document.getElementById('loading').style.display = 'none';
+      setTimeout(() => useMyLocation(retryCount + 1), 1000);
+      return;
+    }
+    
+    let errorMsg = 'Unable to get your location. ';
+    if (error.code === 1) {
+      errorMsg += 'Please allow location access in your browser.';
+    } else if (error.code === 2) {
+      errorMsg += 'Location information is unavailable. Please enter it manually.';
+    } else if (error.code === 3) {
+      errorMsg += 'Location request timed out. Please enter it manually.';
+    } else {
+      errorMsg += 'Please enter your location manually.';
+    }
+    
+    alert(errorMsg);
+    document.getElementById('loading').style.display = 'none';
+  }
+}
+
+async function findNearbyWorkers() {
+  const location = document.getElementById('customer-location').value;
+  if (!location) {
+    alert('Please enter your location');
+    return;
+  }
+  
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('map-container').style.display = 'none';
+  document.getElementById('workers-list').innerHTML = '';
+  
+  try {
+    // If customerLocation is not set, geocode the location
+    if (!customerLocation) {
+      const geocodeResult = await window.LeafletUtils.geocode(location);
+      if (geocodeResult) {
+        customerLocation = {
+          lat: geocodeResult.lat,
+          lng: geocodeResult.lng
+        };
+      } else {
+        alert('Could not find that location. Please try a different address.');
+        document.getElementById('loading').style.display = 'none';
+        return;
+      }
+    }
+    
+    // Fetch workers from server
+    const response = await fetch('/api/nearby-workers?lat=' + customerLocation.lat + '&lng=' + customerLocation.lng + '&location=' + encodeURIComponent(location));
+    const data = await response.json();
+    
+    displayWorkersOnMap(data.workers);
+    displayWorkersList(data.workers);
+    document.getElementById('loading').style.display = 'none';
+    
+  } catch (error) {
+    console.error('Error:', error);
+    alert('Error finding workers. Please try again.');
+    document.getElementById('loading').style.display = 'none';
+  }
+}
+
+async function displayWorkersOnMap(workers) {
+  document.getElementById('map-container').style.display = 'block';
+  document.getElementById('worker-count').textContent = workers.length + ' worker' + (workers.length !== 1 ? 's' : '') + ' found';
+  
+  const mapDiv = document.getElementById('nearby-map');
+  
+  // Clear existing markers
+  markers.forEach(m => {
+    if (m.remove) m.remove();
+  });
+  markers = [];
+  
+  // Create Leaflet map
+  if (customerMap) {
+    customerMap.remove();
+  }
+  
+  customerMap = window.LeafletUtils.createMap('nearby-map', {
+    center: [customerLocation.lat, customerLocation.lng],
+    zoom: 12
+  });
+  
+  // Add customer location marker (red)
+  const customerMarker = L.marker([customerLocation.lat, customerLocation.lng], {
+    icon: L.divIcon({
+      className: 'custom-marker customer-marker',
+      html: '<div style="background: #ef4444; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.3);"></div>',
+      iconSize: [24, 24],
+      iconAnchor: [12, 12]
+    })
+  }).addTo(customerMap);
+  
+  customerMarker.bindPopup('<div style="padding: 8px;"><strong>📍 Your Current Location</strong></div>');
+  markers.push(customerMarker);
+  
+  // Create bounds to fit all markers
+  const bounds = L.latLngBounds();
+  bounds.extend([customerLocation.lat, customerLocation.lng]);
+  
+  // Add worker markers
+  let processedWorkers = 0;
+  const totalWorkers = workers.length;
+  
+  for (const [index, worker] of workers.entries()) {
+    try {
+      // Add delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, index * 100));
+      
+      const geocodeResult = await window.LeafletUtils.geocode(worker.location);
+      
+      if (geocodeResult) {
+        const workerMarker = L.marker([geocodeResult.lat, geocodeResult.lng], {
+          icon: L.divIcon({
+            className: 'custom-marker worker-marker',
+            html: '<div style="background: #10b981; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+          })
+        }).addTo(customerMap);
+        
+        const popupContent = `
+          <div style="padding: 12px; min-width: 200px;">
+            <h4 style="margin: 0 0 8px 0; color: #1f2937;">${worker.name}</h4>
+            <p style="margin: 4px 0; color: #6b7280; font-size: 0.9rem;">📍 ${formatWorkerLocation(worker.location)}</p>
+            <p style="margin: 4px 0; color: #f59e0b; font-size: 0.85rem;">⭐ ${worker.rating || 'N/A'}</p>
+            ${worker.services ? `<p style="margin: 4px 0; color: #6b7280; font-size: 0.85rem;">🔧 ${worker.services}</p>` : ''}
+            <p style="margin: 4px 0; color: #059669; font-size: 0.85rem; font-weight: 600;">📏 ~${worker.distance || 'N/A'}</p>
+            <a href="/worker/${worker.id}" style="display: inline-block; margin-top: 8px; padding: 6px 12px; background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #0f0f0f; text-decoration: none; border-radius: 6px; font-size: 0.85rem; font-weight: 600;">View Profile</a>
+          </div>
+        `;
+        
+        workerMarker.bindPopup(popupContent);
+        markers.push(workerMarker);
+        bounds.extend([geocodeResult.lat, geocodeResult.lng]);
+      }
+      
+      processedWorkers++;
+      if (processedWorkers === totalWorkers) {
+        // Fit map to show all markers
+        if (bounds.isValid()) {
+          customerMap.fitBounds(bounds, { padding: [20, 20] });
+        }
+      }
+      
+    } catch (error) {
+      console.warn(`Failed to geocode worker location: ${worker.location}`, error);
+      processedWorkers++;
+    }
+  }
+}
+
+function displayWorkersList(workers) {
+  const listDiv = document.getElementById('workers-list');
+  
+  if (workers.length === 0) {
+    listDiv.innerHTML = `
+      <div class="card" style="text-align: center; padding: 40px; grid-column: 1/-1;">
+        <div style="font-size: 3rem; margin-bottom: 16px;">😔</div>
+        <h3>No workers found nearby</h3>
+        <p class="muted">Try expanding your search area or check back later</p>
+      </div>
+    `;
+    return;
+  }
+  
+  listDiv.innerHTML = workers.map(worker => `
+    <a class="card" href="/worker/${worker.id}" style="text-decoration: none;">
+      <div class="card-title">${worker.name}</div>
+      <div class="muted">📍 ${formatWorkerLocation(worker.location)}</div>
+      <div class="muted" style="color: #6ee7b7; font-weight: 600;">📏 ${worker.distance || 'N/A'}</div>
+      <div class="rating" style="color: #fbbf24;">${worker.rating || 'N/A'} ★</div>
+      ${worker.services ? `<div class="muted" style="margin-top: 8px;">🔧 ${worker.services}</div>` : ''}
+    </a>
+  `).join('');
+}
+
+// Debug Location Functionality
+function initDebugLocation() {
+  const debugBtn = document.getElementById('debug-location-btn');
+  const debugPanel = document.getElementById('debug-panel');
+  const closeDebugBtn = document.getElementById('close-debug');
+  const debugOutput = document.getElementById('debug-output');
+
+  debugBtn.addEventListener('click', async () => {
+    debugPanel.style.display = 'block';
+    debugOutput.textContent = '🔍 Starting comprehensive location debug...\n\n';
+
+    // Check geolocation support
+    if (!('geolocation' in navigator)) {
+      debugOutput.textContent += '❌ No geolocation support in this browser\n';
+      return;
+    }
+
+    debugOutput.textContent += '✅ Geolocation API is supported\n\n';
+
+    // Check permission state
+    try {
+      const perm = await navigator.permissions.query({ name: 'geolocation' });
+      debugOutput.textContent += `🔐 Permission state: ${perm.state}\n`;
+      
+      if (perm.state === 'denied') {
+        debugOutput.textContent += '⚠️  Location permission is denied. Please enable it in browser settings.\n\n';
+      } else if (perm.state === 'prompt') {
+        debugOutput.textContent += '⏳ Permission will be requested when getting location.\n\n';
+      } else {
+        debugOutput.textContent += '✅ Location permission is granted.\n\n';
+      }
+    } catch (e) {
+      debugOutput.textContent += '⚠️  Could not read permission state (browser might not support Permissions API)\n\n';
+    }
+
+    // Test geolocation with different options
+    debugOutput.textContent += '📍 Testing geolocation with high accuracy...\n';
+    
+    const options = {
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 0
+    };
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude, accuracy, altitude, speed, heading } = pos.coords;
+        const timestamp = new Date(pos.timestamp);
+        
+        debugOutput.textContent += `\n✅ LOCATION ACQUIRED:\n`;
+        debugOutput.textContent += `📍 Latitude: ${latitude}\n`;
+        debugOutput.textContent += `📍 Longitude: ${longitude}\n`;
+        debugOutput.textContent += `🎯 Accuracy: ${accuracy} meters\n`;
+        debugOutput.textContent += `⛰️  Altitude: ${altitude || 'N/A'}\n`;
+        debugOutput.textContent += `🏃 Speed: ${speed || 'N/A'} m/s\n`;
+        debugOutput.textContent += `🧭 Heading: ${heading || 'N/A'}°\n`;
+        debugOutput.textContent += `⏰ Timestamp: ${timestamp.toLocaleString()}\n\n`;
+
+        // Accuracy analysis
+        if (accuracy > 1000) {
+          debugOutput.textContent += `⚠️  ACCURACY WARNING: ${accuracy}m is very coarse (likely IP-based)\n`;
+        } else if (accuracy > 500) {
+          debugOutput.textContent += `⚠️  ACCURACY NOTE: ${accuracy}m is coarse (likely Wi-Fi/cell tower)\n`;
+        } else if (accuracy > 100) {
+          debugOutput.textContent += `ℹ️  ACCURACY: ${accuracy}m is moderate (Wi-Fi + cell tower)\n`;
+        } else {
+          debugOutput.textContent += `✅ ACCURACY: ${accuracy}m is good (GPS-level precision)\n`;
+        }
+
+        // Test reverse geocoding with OpenStreetMap
+        debugOutput.textContent += `\n🌍 Testing reverse geocoding with OpenStreetMap...\n`;
+        
+        try {
+          const geocodeResult = await window.LeafletUtils.reverseGeocode(latitude, longitude);
+          
+          if (geocodeResult) {
+            debugOutput.textContent += `✅ Reverse geocoding successful!\n`;
+            debugOutput.textContent += `📍 Full address: ${geocodeResult.formatted_address}\n`;
+            
+            // Test address formatting
+            const formattedAddress = formatLocationAddress(geocodeResult);
+            debugOutput.textContent += `📍 Formatted address: ${formattedAddress}\n\n`;
+            
+            // Show address components if available
+            if (geocodeResult.address_components && geocodeResult.address_components.length > 0) {
+              debugOutput.textContent += `🏗️  Address components:\n`;
+              geocodeResult.address_components.forEach(component => {
+                debugOutput.textContent += `  - ${component.long_name} (${component.types.join(', ')})\n`;
+              });
+              debugOutput.textContent += `\n`;
+            }
+          } else {
+            debugOutput.textContent += `❌ Reverse geocoding failed\n\n`;
+          }
+        } catch (error) {
+          debugOutput.textContent += `❌ Reverse geocoding error: ${error.message}\n\n`;
+        }
+
+        // Test forward geocoding
+        const testAddress = "Mumbai, India";
+        debugOutput.textContent += `🔍 Testing forward geocoding with "${testAddress}"...\n`;
+        
+        try {
+          const forwardResult = await window.LeafletUtils.geocode(testAddress);
+          
+          if (forwardResult) {
+            debugOutput.textContent += `✅ Forward geocoding successful!\n`;
+            debugOutput.textContent += `📍 ${testAddress} → ${forwardResult.lat}, ${forwardResult.lng}\n\n`;
+          } else {
+            debugOutput.textContent += `❌ Forward geocoding failed\n\n`;
+          }
+        } catch (error) {
+          debugOutput.textContent += `❌ Forward geocoding error: ${error.message}\n\n`;
+        }
+
+        // Show raw position object
+        debugOutput.textContent += `📋 Raw position object:\n`;
+        debugOutput.textContent += JSON.stringify(pos, null, 2) + '\n\n';
+
+        // Test if we can create a map marker
+        debugOutput.textContent += `🗺️  Testing Leaflet map integration...\n`;
+        try {
+          if (typeof L !== 'undefined') {
+            debugOutput.textContent += `✅ Leaflet library is loaded\n`;
+            debugOutput.textContent += `✅ Can create markers at your location\n`;
+            debugOutput.textContent += `✅ OpenStreetMap tiles are available\n`;
+          } else {
+            debugOutput.textContent += `❌ Leaflet library is not loaded\n`;
+          }
+        } catch (error) {
+          debugOutput.textContent += `❌ Leaflet test error: ${error.message}\n`;
+        }
+
+        debugOutput.textContent += `\n🎉 DEBUG COMPLETE! All systems tested.\n`;
+      },
+      (error) => {
+        debugOutput.textContent += `\n❌ GEOLOCATION ERROR:\n`;
+        debugOutput.textContent += `Code: ${error.code}\n`;
+        debugOutput.textContent += `Message: ${error.message}\n\n`;
+
+        switch(error.code) {
+          case 1:
+            debugOutput.textContent += `🔐 PERMISSION_DENIED: User denied location access.\n`;
+            debugOutput.textContent += `💡 Solution: Enable location in browser settings or click "Allow" when prompted.\n`;
+            break;
+          case 2:
+            debugOutput.textContent += `📡 POSITION_UNAVAILABLE: Location information is unavailable.\n`;
+            debugOutput.textContent += `💡 Solution: Check GPS/Wi-Fi, try moving to a different location.\n`;
+            break;
+          case 3:
+            debugOutput.textContent += `⏰ TIMEOUT: Location request timed out.\n`;
+            debugOutput.textContent += `💡 Solution: Try again, check internet connection.\n`;
+            break;
+        }
+      },
+      options
+    );
+  });
+
+  closeDebugBtn.addEventListener('click', () => {
+    debugPanel.style.display = 'none';
+  });
+}
+
+// Auto-load if location is available
+window.addEventListener('load', function() {
+  const locationInput = document.getElementById('customer-location');
+  if (locationInput.value) {
+    findNearbyWorkers();
+  }
+  
+  // Initialize debug functionality
+  initDebugLocation();
+});
+</script>
+{% endblock %}

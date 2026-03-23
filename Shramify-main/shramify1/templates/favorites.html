@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>❤️ Saved Workers</h2>
+{% if workers %}
+  <div class="grid">
+    {% for w in workers %}
+      {% set r = ratings_map.get(w._id) %}
+      <a class="card" href="{{ url_for('view_worker', worker_id=(w._id|string)) }}">
+        {% if w.profile_image %}
+          <img src="/{{ w.profile_image }}" alt="{{ w.name }}" style="width:60px;height:60px;object-fit:cover;border-radius:50%;margin-bottom:8px;">
+        {% endif %}
+        <div class="card-title">{{ w.name }}</div>
+        <div class="muted">📍 {{ w.location }}</div>
+        <div class="chips" style="margin-top:6px;">
+          {% for s in w.services[:2] %}<span class="chip">{{ s.type }}</span>{% endfor %}
+        </div>
+        <div class="rating" style="color:#fbbf24; margin-top:6px;">
+          {{ '%.1f' % r.avg if r else 'N/A' }} ★ {% if r %}({{ r.count }}){% endif %}
+        </div>
+        {% if w.available == false %}
+          <span style="font-size:0.75rem; color:#ef4444; margin-top:4px; display:block;">● Unavailable</span>
+        {% else %}
+          <span style="font-size:0.75rem; color:#10b981; margin-top:4px; display:block;">● Available</span>
+        {% endif %}
+      </a>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="card" style="text-align:center; padding:40px;">
+    <div style="font-size:3rem; margin-bottom:16px;">🤍</div>
+    <h3>No saved workers yet</h3>
+    <p class="muted">Browse workers and tap Save to add them here.</p>
+    <a class="btn" href="{{ url_for('search') }}" style="margin-top:16px;">Find Workers</a>
+  </div>
+{% endif %}
+{% endblock %}

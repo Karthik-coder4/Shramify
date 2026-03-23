@@ -1,0 +1,118 @@
+{% extends 'base.html' %}
+{% block content %}
+  <section class="landing">
+    <div class="landing-text">
+      <h1>Find Trusted Local Workers Near You</h1>
+      <p>Connect with verified professionals for all your home service needs. From electricians to plumbers, find skilled workers you can trust.</p>
+      <div class="cta">
+        <a href="{{ url_for('search') }}" class="btn primary">Find Workers</a>
+        <a href="{{ url_for('register') }}" class="btn ghost">Join as Worker</a>
+      </div>
+    </div>
+    <div class="landing-cards">
+      <div class="promo-card">
+        <span class="emoji">⚡</span>
+        <div class="title">Quick Service</div>
+        <div class="desc">Get connected with workers instantly</div>
+      </div>
+      <div class="promo-card">
+        <span class="emoji">✓</span>
+        <div class="title">Verified</div>
+        <div class="desc">All workers are background checked</div>
+      </div>
+      <div class="promo-card">
+        <span class="emoji">💰</span>
+        <div class="title">Fair Pricing</div>
+        <div class="desc">Transparent rates, no hidden fees</div>
+      </div>
+      <div class="promo-card">
+        <span class="emoji">🌟</span>
+        <div class="title">Top Rated</div>
+        <div class="desc">Read reviews from real customers</div>
+      </div>
+      <div class="promo-card">
+        <span class="emoji">📍</span>
+        <div class="title">Local</div>
+        <div class="desc">Find workers in your neighborhood</div>
+      </div>
+      <div class="promo-card">
+        <span class="emoji">🔒</span>
+        <div class="title">Secure</div>
+        <div class="desc">Safe payments and data protection</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="hero">
+    <h2>🔍 Search for Services</h2>
+    <p>Looking for a specific service? Search by type and location to find the perfect worker.</p>
+    <form class="search-bar" method="get" action="{{ url_for('search') }}">
+      <input name="service_type" type="text" placeholder="Service (e.g., plumber, electrician)" oninput="suggestServices(this)" autocomplete="off">
+      <input name="location" type="text" placeholder="Location (e.g., Ballari, Bangalore)">
+      <button type="submit">Search</button>
+    </form>
+  </section>
+
+  <section class="workers-section">
+    <h2>🏆 Top rated workers</h2>
+    <div class="grid">
+      {% for w in featured %}
+        <a class="card" href="{{ url_for('view_worker', worker_id=(w._id|string)) }}">
+          <div class="card-title">{{ w.name }}</div>
+          <div class="muted"><span class="worker-location" data-full-location="{{ w.location }}">{{ w.location }}</span></div>
+          <div class="chips">
+            {% for s in w.services[:3] %}
+              <span class="chip">{{ s.type }}</span>
+            {% endfor %}
+          </div>
+          <div class="rating">{{ '%.1f' % w.avg_rating if w.avg_rating else 'N/A' }} ★</div>
+        </a>
+      {% else %}
+        <div class="empty-state">
+          <div class="empty-icon">👷</div>
+          <h3>No workers yet</h3>
+          <p class="muted">Be the first to join our community! Encourage skilled workers to sign up.</p>
+          <a href="{{ url_for('register') }}" class="btn">Register as Worker</a>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+<script>
+// Function to format worker location for display (clean up long addresses)
+function formatWorkerLocation(location) {
+  if (!location) return 'Location not specified';
+  
+  // If it's a long address with postal code and country, try to shorten it
+  if (location.includes(',')) {
+    const parts = location.split(',').map(part => part.trim());
+    
+    // Remove postal codes (6 digits) and country names
+    const filteredParts = parts.filter(part => {
+      return !(/^\d{6}$/.test(part)) && // Remove 6-digit postal codes
+             !part.toLowerCase().includes('india') && // Remove country
+             part.length > 0;
+    });
+    
+    // Take first 2-3 meaningful parts
+    if (filteredParts.length >= 2) {
+      return filteredParts.slice(0, 2).join(', ');
+    } else if (filteredParts.length === 1) {
+      return filteredParts[0];
+    }
+  }
+  
+  // If no commas or short already, return as is
+  return location;
+}
+
+// Format all worker locations on page load
+document.addEventListener('DOMContentLoaded', function() {
+  const locationSpans = document.querySelectorAll('.worker-location');
+  locationSpans.forEach(span => {
+    const fullLocation = span.getAttribute('data-full-location');
+    span.textContent = formatWorkerLocation(fullLocation);
+  });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,174 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>🔍 Find Local Workers</h2>
+<form class="search-bar" method="get">
+  <input name="service_type" value="{{ q_type }}" placeholder="Service (e.g., Electrician, Plumber)" oninput="suggestServices(this)" autocomplete="off">
+  <input name="location" value="{{ q_loc }}" placeholder="Location (e.g., Mumbai, Delhi)">
+  <button type="submit">🔍 Search</button>
+</form>
+
+{% if workers %}
+<div style="margin: 20px 0;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+    <h3 style="margin: 0;">Found {{ workers|length }} worker{{ 's' if workers|length != 1 else '' }}</h3>
+    <button onclick="toggleMapView()" class="btn ghost" id="map-toggle">🗺️ Show Map</button>
+  </div>
+  
+  <div id="search-map" style="width: 100%; height: 400px; border-radius: 16px; margin-bottom: 20px; border: 1px solid #e2e8f0; display: none;"></div>
+</div>
+{% endif %}
+
+<div class="grid">
+  {% for w in workers %}
+    <a class="card" href="{{ url_for('view_worker', worker_id=(w._id|string)) }}" data-location="{{ w.location }}" data-name="{{ w.name }}" data-id="{{ w._id }}">
+      <div class="card-title">{{ w.name }}</div>
+      <div class="muted">📍 <span class="worker-location" data-full-location="{{ w.location }}">{{ w.location }}</span></div>
+      <div class="chips">
+        <span class="chip">{{ (w.worker_type or 'informal')|capitalize }}</span>
+        {% for s in w.services[:3] %}
+          <span class="chip">{{ s.type }}</span>
+        {% endfor %}
+      </div>
+      {% set r = ratings_map.get(w._id) %}
+      <div class="rating" style="color: #fbbf24;">{{ '%.1f' % r.avg if r else 'N/A' }} ★ {% if r %}({{ r.count }}){% endif %}</div>
+    </a>
+  {% else %}
+    <div class="card" style="text-align: center; padding: 40px;">
+      <div style="font-size: 3rem; margin-bottom: 16px;">🔍</div>
+      <h3>No workers found</h3>
+      <p class="muted">Try adjusting your search criteria or browse all workers</p>
+    </div>
+  {% endfor %}
+</div>
+
+<script>
+let searchMap = null;
+let mapVisible = false;
+
+// Function to format worker location for display (clean up long addresses)
+function formatWorkerLocation(location) {
+  if (!location) return 'Location not specified';
+  
+  // If it's a long address with postal code and country, try to shorten it
+  if (location.includes(',')) {
+    const parts = location.split(',').map(part => part.trim());
+    
+    // Remove postal codes (6 digits) and country names
+    const filteredParts = parts.filter(part => {
+      return !(/^\d{6}$/.test(part)) && // Remove 6-digit postal codes
+             !part.toLowerCase().includes('india') && // Remove country
+             part.length > 0;
+    });
+    
+    // Take first 2-3 meaningful parts
+    if (filteredParts.length >= 2) {
+      return filteredParts.slice(0, 2).join(', ');
+    } else if (filteredParts.length === 1) {
+      return filteredParts[0];
+    }
+  }
+  
+  // If no commas or short already, return as is
+  return location;
+}
+
+// Format all worker locations on page load
+document.addEventListener('DOMContentLoaded', function() {
+  const locationSpans = document.querySelectorAll('.worker-location');
+  locationSpans.forEach(span => {
+    const fullLocation = span.getAttribute('data-full-location');
+    span.textContent = formatWorkerLocation(fullLocation);
+  });
+});
+
+function toggleMapView() {
+  const mapDiv = document.getElementById('search-map');
+  const toggleBtn = document.getElementById('map-toggle');
+  
+  mapVisible = !mapVisible;
+  mapDiv.style.display = mapVisible ? 'block' : 'none';
+  toggleBtn.textContent = mapVisible ? '📋 Show List' : '🗺️ Show Map';
+  
+  if (mapVisible && !searchMap) {
+    initSearchMap();
+  }
+}
+
+async function initSearchMap() {
+  const mapDiv = document.getElementById('search-map');
+  if (!mapDiv) return;
+  
+  // Get workers data from the page
+  const workerCards = document.querySelectorAll('.card[data-location]');
+  const workers = Array.from(workerCards).map(card => ({
+    name: card.getAttribute('data-name'),
+    location: card.getAttribute('data-location'),
+    id: card.getAttribute('data-id'),
+    services: [] // Services will be extracted from the card if needed
+  }));
+  
+  if (workers.length === 0) return;
+  
+  // Create Leaflet map
+  if (searchMap) {
+    searchMap.remove();
+  }
+  
+  searchMap = window.LeafletUtils.createMap('search-map', {
+    center: [20.5937, 78.9629], // Default India center
+    zoom: 5
+  });
+  
+  const bounds = L.latLngBounds();
+  let geocodedCount = 0;
+  
+  for (const [index, worker] of workers.entries()) {
+    try {
+      // Add delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, index * 100));
+      
+      const geocodeResult = await window.LeafletUtils.geocode(worker.location);
+      
+      if (geocodeResult) {
+        const marker = L.marker([geocodeResult.lat, geocodeResult.lng], {
+          icon: L.divIcon({
+            className: 'custom-marker search-worker-marker',
+            html: '<div style="background: #0ea5e9; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+            iconSize: [16, 16],
+            iconAnchor: [8, 8]
+          })
+        }).addTo(searchMap);
+        
+        const popupContent = `
+          <div style="padding: 12px; min-width: 200px;">
+            <h4 style="margin: 0 0 8px 0; color: #1f2937;">${worker.name}</h4>
+            <p style="margin: 4px 0; color: #6b7280; font-size: 0.9rem;">📍 ${formatWorkerLocation(worker.location)}</p>
+            ${worker.services.length > 0 ? `<p style="margin: 4px 0; color: #6b7280; font-size: 0.85rem;">🔧 ${worker.services.join(', ')}</p>` : ''}
+            <a href="/worker/${worker.id}" style="display: inline-block; margin-top: 8px; padding: 6px 12px; background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #0f0f0f; text-decoration: none; border-radius: 6px; font-size: 0.85rem; font-weight: 600;">View Profile</a>
+          </div>
+        `;
+        
+        marker.bindPopup(popupContent);
+        bounds.extend([geocodeResult.lat, geocodeResult.lng]);
+        
+        geocodedCount++;
+        if (geocodedCount === workers.length) {
+          // Fit map to show all markers
+          if (bounds.isValid()) {
+            searchMap.fitBounds(bounds, { padding: [20, 20] });
+            if (workers.length === 1) {
+              searchMap.setZoom(14);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(`Failed to geocode worker location: ${worker.location}`, error);
+      geocodedCount++;
+    }
+  }
+}
+
+// Map will be initialized when user clicks the button
+</script>
+{% endblock %}
