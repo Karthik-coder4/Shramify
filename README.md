@@ -1,4 +1,3 @@
-# Shramify
 # Shramify – Informal Worker Management Platform
 
 Shramify is a web application designed to connect informal workers such as electricians, plumbers, maids, and laborers directly with customers. The platform helps customers find reliable workers easily while supporting fair wages and reducing the role of middlemen.
